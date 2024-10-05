@@ -2,14 +2,13 @@ import tkinter as tk
 from tkinter import messagebox
 import random
 import time
-import json
 
 class Minesweeper:
-    def __init__(self, root, size=9, bombs=10, difficulty="easy", dark_mode=False, no_flags=False):
+    def __init__(self, root, size=9, bombs=10, difficulty="easy", dark_mode=False, no_flags=False, zen_mode=False, hints_available=3):
         self.root = root
         self.size = size
         self.bombs = bombs
-        self.difficulty = difficulty  # Store difficulty level
+        self.difficulty = difficulty
         self.grid = []
         self.buttons = []
         self.bomb_locations = []
@@ -17,17 +16,21 @@ class Minesweeper:
         self.start_time = None
         self.dark_mode = dark_mode
         self.no_flags = no_flags
+        self.zen_mode = zen_mode  # Mode Zen tanpa waktu
+        self.hints_available = hints_available  # Jumlah hints yang tersedia
         self.timer_label = tk.Label(self.root, text="Time: 0")
         self.timer_label.grid(row=0, column=0, columnspan=self.size - 2, sticky="ew")
+        self.hint_button = tk.Button(self.root, text=f"Hints ({self.hints_available})", command=self.use_hint)
+        self.hint_button.grid(row=0, column=self.size - 4, sticky="ew")
         self.mode_button = tk.Button(self.root, text="Dark Mode", command=self.toggle_mode)
         self.mode_button.grid(row=0, column=self.size - 2, columnspan=2, sticky="ew")
         self.quit_button = tk.Button(self.root, text="Quit", command=self.quit_game)
-        self.quit_button.grid(row=0, column=self.size, columnspan=2, sticky="ew")  # Positioning Quit button
+        self.quit_button.grid(row=0, column=self.size, columnspan=2, sticky="ew")
         self.create_widgets()
         self.place_bombs()
         self.calculate_numbers()
         self.update_timer()
-        self.apply_mode()  # Apply the initial theme (light or dark)
+        self.apply_mode()
 
     def toggle_mode(self):
         self.dark_mode = not self.dark_mode
@@ -41,7 +44,8 @@ class Minesweeper:
         self.root.config(bg=bg_color)
         self.timer_label.config(bg=bg_color, fg=fg_color)
         self.mode_button.config(text="Light Mode" if self.dark_mode else "Dark Mode", bg=bg_color, fg=fg_color)
-        self.quit_button.config(bg=bg_color, fg=fg_color)  # Update Quit button color
+        self.quit_button.config(bg=bg_color, fg=fg_color)
+        self.hint_button.config(bg=bg_color, fg=fg_color)
 
         for r in range(self.size):
             for c in range(self.size):
@@ -53,7 +57,7 @@ class Minesweeper:
             for c in range(self.size):
                 button = tk.Button(self.root, width=2, height=1, command=lambda r=r, c=c: self.click(r, c))
                 button.bind("<Button-3>", lambda e, r=r, c=c: self.right_click(r, c) if not self.no_flags else None)
-                button.grid(row=r + 1, column=c)  # Adjust for the timer row
+                button.grid(row=r + 1, column=c)
                 row_buttons.append(button)
             self.buttons.append(row_buttons)
 
@@ -76,8 +80,7 @@ class Minesweeper:
         if self.is_game_over:
             return
 
-        # Start the timer when the first cell is clicked
-        if self.start_time is None:
+        if self.start_time is None and not self.zen_mode:  # Timer only starts if not in Zen mode
             self.start_time = time.time()
 
         if (r, c) in self.bomb_locations:
@@ -94,11 +97,11 @@ class Minesweeper:
 
         current_text = self.buttons[r][c].cget("text")
         if current_text == "":
-            self.buttons[r][c].config(text="F", fg="blue", bg="yellow")  # Change color when flagged
-            self.buttons[r][c].config(state="disabled")  # Disable button after flagging
+            self.buttons[r][c].config(text="F", fg="blue", bg="yellow")
+            self.buttons[r][c].config(state="disabled")
         elif current_text == "F":
-            self.buttons[r][c].config(text="", bg="SystemButtonFace")  # Reset to default background when unflagged
-            self.buttons[r][c].config(state="normal")  # Re-enable button when unflagged
+            self.buttons[r][c].config(text="", bg="SystemButtonFace")
+            self.buttons[r][c].config(state="normal")
 
     def reveal(self, r, c):
         if self.grid[r][c] == -1 or self.buttons[r][c].cget("text") != "":
@@ -119,7 +122,6 @@ class Minesweeper:
         return True
 
     def calculate_score(self, time_taken):
-        # Base scores based on difficulty
         if self.difficulty == "easy":
             base_score = 100
         elif self.difficulty == "medium":
@@ -127,14 +129,12 @@ class Minesweeper:
         elif self.difficulty == "hard":
             base_score = 300
 
-        # Multiplier based on time (the faster, the higher the multiplier)
         if time_taken > 0:
             multiplier = 100 / time_taken
         else:
             multiplier = 0
 
-        score = int(base_score * multiplier)
-        return score
+        return int(base_score * multiplier)
 
     def game_over(self):
         self.is_game_over = True
@@ -151,54 +151,87 @@ class Minesweeper:
         messagebox.showinfo("Congratulations", f"You win!\nTime: {int(time_taken)} seconds\nScore: {score}")
 
     def update_timer(self):
-        if self.start_time is not None and not self.is_game_over:
+        if self.start_time is not None and not self.is_game_over and not self.zen_mode:
             time_elapsed = int(time.time() - self.start_time)
             self.timer_label.config(text=f"Time: {time_elapsed} seconds")
         self.root.after(1000, self.update_timer)
-        
-    def save_game(self):
-        # Save the game state to a file (for example, using JSON)
-        game_state = {
-            'size': self.size,
-            'bombs': self.bombs,
-            'grid': self.grid,
-            'bomb_locations': self.bomb_locations,
-            'buttons_state': [[self.buttons[r][c].cget("text") for c in range(self.size)] for r in range(self.size)]
-        }
-        with open("saved_game.json", "w") as file:
-            json.dump(game_state, file)
-        messagebox.showinfo("Save Game", "Game has been saved.")
+
+    def use_hint(self):
+        if self.hints_available > 0:
+            safe_cells = [(r, c) for r in range(self.size) for c in range(self.size)
+                          if self.grid[r][c] != -1 and self.buttons[r][c].cget("state") == "normal"]
+            if safe_cells:
+                r, c = random.choice(safe_cells)
+                self.reveal(r, c)
+                self.hints_available -= 1
+                self.hint_button.config(text=f"Hints ({self.hints_available})")
+        else:
+            messagebox.showinfo("No Hints", "No hints left!")
 
     def quit_game(self):
-        if messagebox.askyesno("Quit Game", "Do you want to save the game before quitting?"):
-            self.save_game()
         if messagebox.askyesno("Quit Game", "Are you sure you want to quit?"):
-            self.root.destroy()  # Close the game window
-            
-# Function to create the game with different difficulty levels
-def start_game(difficulty, no_flags=False):
-    if difficulty == "easy":
+            self.root.destroy()
+
+# Main menu to select difficulty and custom modes
+def start_game(difficulty, no_flags=False, zen_mode=False, custom=False, custom_size=9, custom_bombs=10):
+    if custom:
+        size, bombs = custom_size, custom_bombs
+    elif difficulty == "easy":
         size, bombs = 9, 10
+    elif difficulty == "medium":
+        size, bombs = 16, 40
     elif difficulty == "medium":
         size, bombs = 16, 40
     elif difficulty == "hard":
         size, bombs = 24, 99
-    root = tk.Tk()
-    root.title(f"Minesweeper - {difficulty.capitalize()} Mode")
-    game = Minesweeper(root, size=size, bombs=bombs, difficulty=difficulty, no_flags=no_flags)
-    root.mainloop()
 
-# Main menu to select difficulty
-def main_menu():
     root = tk.Tk()
     root.title("Minesweeper")
 
-    tk.Label(root, text="Choose Difficulty").pack(pady=10)
+    # Inisialisasi permainan Minesweeper dengan mode yang dipilih
+    game = Minesweeper(root, size=size, bombs=bombs, difficulty=difficulty, no_flags=no_flags, zen_mode=zen_mode)
 
-    tk.Button(root, text="Easy", command=lambda: [root.destroy(), start_game("easy")]).pack(pady=5)
-    tk.Button(root, text="Medium", command=lambda: [root.destroy(), start_game("medium")]).pack(pady=5)
-    tk.Button(root, text="Hard", command=lambda: [root.destroy(), start_game("hard")]).pack(pady=5)
-    tk.Button(root, text="No Flags", command=lambda: [root.destroy(), start_game("easy", no_flags=True)]).pack(pady=5)
+    root.mainloop()
+
+# Fungsi untuk memilih mode permainan dari menu utama
+def main_menu():
+    root = tk.Tk()
+    root.title("Minesweeper Menu")
+
+    def start_easy():
+        root.destroy()
+        start_game("easy")
+
+    def start_medium():
+        root.destroy()
+        start_game("medium")
+
+    def start_hard():
+        root.destroy()
+        start_game("hard")
+
+    def start_zen_mode():
+        root.destroy()
+        start_game("easy", zen_mode=True)
+
+    def start_custom_mode():
+        root.destroy()
+        # Di sini kita bisa meminta ukuran grid dan jumlah bom secara dinamis
+        custom_size = int(input("Enter grid size (e.g., 9 for 9x9): "))
+        custom_bombs = int(input(f"Enter number of bombs (max {custom_size * custom_size - 1}): "))
+        start_game("custom", custom=True, custom_size=custom_size, custom_bombs=custom_bombs)
+
+    def start_no_flags_mode():
+        root.destroy()
+        start_game("easy", no_flags=True)
+
+    # Tombol di menu utama
+    tk.Button(root, text="Easy", command=start_easy).grid(row=0, column=0)
+    tk.Button(root, text="Medium", command=start_medium).grid(row=1, column=0)
+    tk.Button(root, text="Hard", command=start_hard).grid(row=2, column=0)
+    tk.Button(root, text="Zen Mode (No Timer)", command=start_zen_mode).grid(row=3, column=0)
+    tk.Button(root, text="Custom Mode", command=start_custom_mode).grid(row=4, column=0)
+    tk.Button(root, text="No Flags Mode", command=start_no_flags_mode).grid(row=5, column=0)
 
     root.mainloop()
 
